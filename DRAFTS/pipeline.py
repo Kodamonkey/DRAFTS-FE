@@ -1,10 +1,74 @@
-"""High level pipeline for FRB detection with CenterNet."""
+"""High level pipeline for FRB detectiondef _load_model() -> torch.nn.Mdef _load_model() -> torch.nn.Module:
+    """Load the CenterNet model configured in :mod:`config`."""
+    start_time = time.time()
+    _debug_log(f"Iniciando carga del modelo de detección: {config.MODEL_NAME}")
+    _debug_memory("LOAD_MODEL_START")
+    
+    if torch is None:
+        _debug_log("torch no disponible", "ERROR")
+        raise ImportError("torch is required to load models")
+
+    try:
+        from ObjectDet.centernet_model import centernet
+        _debug_log(f"Importando modelo centernet con {config.MODEL_NAME}")
+        
+        model = centernet(model_name=config.MODEL_NAME).to(config.DEVICE)
+        _debug_log(f"Modelo creado y movido a {config.DEVICE}")
+        _debug_memory("MODEL_CREATED")
+        
+        _debug_log(f"Cargando pesos desde {config.MODEL_PATH}")
+        state = torch.load(config.MODEL_PATH, map_location=config.DEVICE, weights_only=False)
+        model.load_state_dict(state)
+        model.eval()
+        
+        _debug_log("Modelo cargado exitosamente en modo evaluación")
+        _debug_memory("LOAD_MODEL_END")
+        _debug_timing("LOAD_MODEL", start_time)
+        
+        return model
+    except Exception as e:
+        _debug_log(f"Error cargando modelo: {e}", "ERROR")
+        _debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
+        raise """Load the CenterNet model configured in :mod:`config`."""
+    start_time = time.time()
+    _debug_log(f"Iniciando carga del modelo de detección: {config.MODEL_NAME}")
+    _debug_memory("LOAD_MODEL_START")
+    
+    if torch is None:
+        _debug_log("torch no disponible", "ERROR")
+        raise ImportError("torch is required to load models")
+
+    try:
+        from ObjectDet.centernet_model import centernet
+        _debug_log(f"Importando modelo centernet con {config.MODEL_NAME}")
+        
+        model = centernet(model_name=config.MODEL_NAME).to(config.DEVICE)
+        _debug_log(f"Modelo creado y movido a {config.DEVICE}")
+        _debug_memory("MODEL_CREATED")
+        
+        _debug_log(f"Cargando pesos desde {config.MODEL_PATH}")
+        state = torch.load(config.MODEL_PATH, map_location=config.DEVICE, weights_only=False)
+        model.load_state_dict(state)
+        model.eval()
+        
+        _debug_log("Modelo cargado exitosamente en modo evaluación")
+        _debug_memory("LOAD_MODEL_END")
+        _debug_timing("LOAD_MODEL", start_time)
+        
+        return model
+    except Exception as e:
+        _debug_log(f"Error cargando modelo: {e}", "ERROR")
+        _debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
+        raiserNet."""
 from __future__ import annotations
 
 import csv
 import json
 import logging
 import time
+import traceback
+import psutil
+import os
 from pathlib import Path
 from typing import List
 
@@ -25,7 +89,7 @@ from .image_utils import (
     postprocess_img,
     plot_waterfall_block,
 )
-from .io import get_obparams, load_fits_file
+from .io import get_obparams, load_data_file
 from .visualization import (
     save_plot,
     save_patch_plot,
@@ -49,19 +113,42 @@ def _load_model() -> torch.nn.Module:
 
 def _load_class_model() -> torch.nn.Module:
     """Load the binary classification model configured in :mod:`config`."""
+    start_time = time.time()
+    _debug_log(f"Iniciando carga del modelo de clasificación: {config.CLASS_MODEL_NAME}")
+    _debug_memory("LOAD_CLASS_MODEL_START")
+    
     if torch is None:
+        _debug_log("torch no disponible para modelo de clasificación", "ERROR")
         raise ImportError("torch is required to load models")
 
-    from BinaryClass.binary_model import BinaryNet
-    model = BinaryNet(config.CLASS_MODEL_NAME, num_classes=2).to(config.DEVICE)
-    state = torch.load(config.CLASS_MODEL_PATH, map_location=config.DEVICE)
-    model.load_state_dict(state)
-    model.eval()
-    return model
+    try:
+        from BinaryClass.binary_model import BinaryNet
+        _debug_log(f"Importando modelo BinaryNet con {config.CLASS_MODEL_NAME}")
+        
+        model = BinaryNet(config.CLASS_MODEL_NAME, num_classes=2).to(config.DEVICE)
+        _debug_log(f"Modelo de clasificación creado y movido a {config.DEVICE}")
+        _debug_memory("CLASS_MODEL_CREATED")
+        
+        _debug_log(f"Cargando pesos de clasificación desde {config.CLASS_MODEL_PATH}")
+        state = torch.load(config.CLASS_MODEL_PATH, map_location=config.DEVICE, weights_only=False)
+        model.load_state_dict(state)
+        model.eval()
+        
+        _debug_log("Modelo de clasificación cargado exitosamente")
+        _debug_memory("LOAD_CLASS_MODEL_END")
+        _debug_timing("LOAD_CLASS_MODEL", start_time)
+        
+        return model
+    except Exception as e:
+        _debug_log(f"Error cargando modelo de clasificación: {e}", "ERROR")
+        _debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
+        raise
 
-def _find_fits_files(frb: str) -> List[Path]:
-    """Return FITS files matching ``frb`` within ``config.DATA_DIR``."""
-    return sorted(f for f in config.DATA_DIR.glob("*.fits") if frb in f.name)
+def _find_data_files(frb: str) -> List[Path]:
+    """Return FITS and FIL files matching ``frb`` within ``config.DATA_DIR``."""
+    fits_files = sorted(f for f in config.DATA_DIR.glob("*.fits") if frb in f.name)
+    fil_files = sorted(f for f in config.DATA_DIR.glob("*.fil") if frb in f.name)
+    return fits_files + fil_files
 
 
 def _ensure_csv_header(csv_path: Path) -> None:
@@ -188,11 +275,18 @@ def _process_file(
     """Process a single FITS file and return summary information."""
 
     t_start = time.time()
+    _debug_log(f"=== INICIANDO PROCESAMIENTO DE {fits_path.name} ===")
+    _debug_memory("PROCESS_FILE_START")
     logger.info("Procesando %s", fits_path.name)
 
     try:
-        data = load_fits_file(str(fits_path))
+        _debug_log("Cargando archivo de datos...")
+        data = load_data_file(str(fits_path))
+        _debug_data_info(data, "LOADED_RAW")
+        _debug_memory("DATA_LOADED")
+        
     except ValueError as e:
+        _debug_log(f"Error de valor cargando archivo: {e}", "ERROR")
         if "corrupto" in str(e).lower():
             logger.error("Archivo corrupto detectado: %s - SALTANDO", fits_path.name)
             return {
@@ -206,24 +300,52 @@ def _process_file(
             }
         else:
             raise  # Re-lanzar si es otro tipo de error
+    except Exception as e:
+        _debug_log(f"Error inesperado cargando archivo: {e}", "ERROR")
+        _debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
+        raise
+                "mean_snr": 0.0,
+                "status": "CORRUPTED_FILE"
+            }
+        else:
+            raise  # Re-lanzar si es otro tipo de error
     
+    _debug_log("Procesando forma de datos...")
     if data.shape[1] == 1:
+        _debug_log("Datos tienen solo 1 polarización, duplicando...")
         data = np.repeat(data, 2, axis=1)
     data = np.vstack([data, data[::-1, :]])
+    _debug_data_info(data, "AFTER_VSTACK")
+    _debug_memory("AFTER_VSTACK")
 
+    _debug_log("Iniciando downsampling de datos...")
     data = downsample_data(data)
+    _debug_data_info(data, "AFTER_DOWNSAMPLE")
+    _debug_memory("AFTER_DOWNSAMPLE")
 
+    _debug_log("Calculando frecuencias downsampled...")
     freq_down = np.mean(
         config.FREQ.reshape(config.FREQ_RESO // config.DOWN_FREQ_RATE, config.DOWN_FREQ_RATE),
         axis=1,
     )
+    _debug_log(f"Frecuencias downsampled: {len(freq_down)} canales, rango {freq_down.min():.1f}-{freq_down.max():.1f} MHz")
 
+    _debug_log("Calculando parámetros de dedispersion...")
     height = config.DM_max - config.DM_min + 1
     width_total = config.FILE_LENG // config.DOWN_TIME_RATE
+    _debug_log(f"Grid de dedispersion: {height} DMs x {width_total} muestras temporales")
 
+    _debug_log("Calculando parámetros de slicing...")
     slice_len, time_slice = _slice_parameters(width_total, config.SLICE_LEN)
+    _debug_log(f"Parámetros de slicing: {time_slice} slices de {slice_len} muestras cada uno")
 
+    _debug_log("=== INICIANDO DEDISPERSION ===")
+    _debug_memory("BEFORE_DEDISPERSION")
+    dm_time_start = time.time()
     dm_time = d_dm_time_g(data, height=height, width=width_total)
+    _debug_timing("DEDISPERSION", dm_time_start)
+    _debug_data_info(dm_time, "DEDISPERSED")
+    _debug_memory("AFTER_DEDISPERSION")
 
     slice_duration = slice_len * config.TIME_RESO * config.DOWN_TIME_RATE
     logger.info(
@@ -234,6 +356,7 @@ def _process_file(
         slice_duration,
     )
 
+    _debug_log("Preparando archivo CSV...")
     csv_file = save_dir / f"{fits_path.stem}.candidates.csv"
     _ensure_csv_header(csv_file)
 
@@ -243,6 +366,7 @@ def _process_file(
     prob_max = 0.0
     snr_list: List[float] = []
 
+    _debug_log("Configurando bandas de procesamiento...")
     band_configs = (
         [
             (0, "fullband", "Full Band"),
@@ -252,8 +376,10 @@ def _process_file(
         if config.USE_MULTI_BAND
         else [(0, "fullband", "Full Band")]
     )
+    _debug_log(f"Configuración de bandas: {len(band_configs)} bandas a procesar")
 
     # Preparar directorios para waterfalls individuales
+    _debug_log("Preparando directorios de salida...")
     waterfall_dispersion_dir = save_dir / "waterfall_dispersion" / fits_path.stem
     waterfall_dedispersion_dir = save_dir / "waterfall_dedispersion" / fits_path.stem
     freq_ds = np.mean(
@@ -262,31 +388,59 @@ def _process_file(
     )
     time_reso_ds = config.TIME_RESO * config.DOWN_TIME_RATE
 
+    _debug_log(f"=== INICIANDO BUCLE PRINCIPAL: {time_slice} slices ===")
     for j in range(time_slice):
+        slice_start_time = time.time()
+        _debug_log(f"--- PROCESANDO SLICE {j+1}/{time_slice} ---")
+        _debug_memory(f"SLICE_{j}_START")
+        
         slice_cube = dm_time[:, :, slice_len * j : slice_len * (j + 1)]
         waterfall_block = data[j * slice_len : (j + 1) * slice_len]
+        _debug_data_info(slice_cube, f"SLICE_{j}_CUBE")
+        _debug_data_info(waterfall_block, f"SLICE_{j}_WATERFALL")
         
         # 2) Generar waterfall sin dedispersar para este slice
+        _debug_log(f"Generando waterfall para slice {j}...")
         waterfall_dispersion_dir.mkdir(parents=True, exist_ok=True)
         if waterfall_block.size > 0:
-            plot_waterfall_block(
-                data_block=waterfall_block,
-                freq=freq_ds,
-                time_reso=time_reso_ds,
-                block_size=waterfall_block.shape[0],
-                block_idx=j,
-                save_dir=waterfall_dispersion_dir,
-                filename=fits_path.stem,
-                normalize=True,
-            )
+            try:
+                plot_waterfall_block(
+                    data_block=waterfall_block,
+                    freq=freq_ds,
+                    time_reso=time_reso_ds,
+                    block_size=waterfall_block.shape[0],
+                    block_idx=j,
+                    save_dir=waterfall_dispersion_dir,
+                    filename=fits_path.stem,
+                    normalize=True,
+                )
+                _debug_log(f"Waterfall para slice {j} generado exitosamente")
+            except Exception as e:
+                _debug_log(f"Error generando waterfall para slice {j}: {e}", "WARNING")
 
+        _debug_log(f"Procesando {len(band_configs)} bandas para slice {j}...")
         for band_idx, band_suffix, band_name in band_configs:
+            band_start_time = time.time()
+            _debug_log(f"  Procesando banda {band_idx} ({band_name})...")
+            
             band_img = slice_cube[band_idx]
+            _debug_data_info(band_img, f"BAND_{band_idx}_SLICE_{j}")
+            
+            _debug_log(f"  Preprocesando imagen para detección...")
             img_tensor = preprocess_img(band_img)
+            _debug_data_info(img_tensor, f"PREPROCESSED_SLICE_{j}_BAND_{band_idx}")
+            
+            _debug_log(f"  Ejecutando detección...")
+            detection_start = time.time()
             top_conf, top_boxes = _detect(det_model, img_tensor)
+            _debug_timing(f"DETECTION_SLICE_{j}_BAND_{band_idx}", detection_start)
+            
+            _debug_log(f"  Detección completada: {len(top_conf) if top_conf else 0} candidatos")
             if top_boxes is None:
+                _debug_log(f"  No se encontraron candidatos en slice {j}, banda {band_idx}")
                 continue
 
+            _debug_log(f"  Postprocesando imagen...")
             img_rgb = postprocess_img(img_tensor)
 
             first_patch: np.ndarray | None = None
@@ -436,17 +590,38 @@ def _process_file(
 def run_pipeline() -> None:
     """Run the full FRB detection pipeline."""
 
-    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+    # Configurar logging más detallado si DEBUG está activado
+    if config.DEBUG:
+        logging.basicConfig(
+            level=logging.DEBUG, 
+            format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+            datefmt="%H:%M:%S"
+        )
+    else:
+        logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
+    _debug_log("=== INICIANDO PIPELINE DE DETECCIÓN FRB ===")
+    _debug_memory("PIPELINE_START")
+    
     save_dir = config.RESULTS_DIR / config.MODEL_NAME
     save_dir.mkdir(parents=True, exist_ok=True)
+    _debug_log(f"Directorio de resultados: {save_dir}")
+    
+    _debug_log("Cargando modelos...")
     det_model = _load_model()
     cls_model = _load_class_model()
+    _debug_log("Modelos cargados exitosamente")
 
     summary: dict[str, dict] = {}
+    _debug_log(f"Objetivos FRB a procesar: {config.FRB_TARGETS}")
+    
     for frb in config.FRB_TARGETS:
-        file_list = _find_fits_files(frb)
+        _debug_log(f"Buscando archivos para objetivo: {frb}")
+        file_list = _find_data_files(frb)
+        _debug_log(f"Archivos encontrados: {[f.name for f in file_list]}")
+        
         if not file_list:
+            _debug_log(f"No se encontraron archivos para {frb}", "WARNING")
             continue
 
         try:
@@ -471,6 +646,65 @@ def run_pipeline() -> None:
                 }
 
     _write_summary(summary, save_dir)
+
+def _debug_memory(stage: str) -> None:
+    """Log memory usage if DEBUG_MEMORY is enabled."""
+    try:
+        if not config.DEBUG_MEMORY:
+            return
+        
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        logger.info(f"[MEMORY-{stage}] RSS: {memory_info.rss / 1024**2:.1f} MB, VMS: {memory_info.vms / 1024**2:.1f} MB")
+    except Exception:
+        pass  # Silently fail if memory monitoring has issues
+
+
+def _debug_data_info(data: np.ndarray, stage: str) -> None:
+    """Log detailed data information if DEBUG_DATA is enabled."""
+    try:
+        if not config.DEBUG_DATA:
+            return
+        
+        logger.info(f"[DATA-{stage}] Shape: {data.shape}, dtype: {data.dtype}")
+        logger.info(f"[DATA-{stage}] Min: {data.min():.6f}, Max: {data.max():.6f}, Mean: {data.mean():.6f}, Std: {data.std():.6f}")
+        logger.info(f"[DATA-{stage}] NaN count: {np.isnan(data).sum()}, Inf count: {np.isinf(data).sum()}")
+        if data.ndim >= 2:
+            logger.info(f"[DATA-{stage}] First slice shape: {data[0].shape if data.ndim > 2 else data.shape}")
+    except Exception:
+        pass  # Silently fail if data analysis has issues
+
+
+def _debug_timing(func_name: str, start_time: float) -> None:
+    """Log timing information if DEBUG_TIMING is enabled."""
+    try:
+        if not config.DEBUG_TIMING:
+            return
+        
+        elapsed = time.time() - start_time
+        logger.info(f"[TIMING-{func_name}] Elapsed: {elapsed:.3f} seconds")
+    except Exception:
+        pass  # Silently fail if timing has issues
+
+
+def _debug_log(message: str, level: str = "INFO") -> None:
+    """Log debug message if DEBUG is enabled."""
+    try:
+        if not config.DEBUG:
+            return
+        
+        if level == "DEBUG":
+            logger.debug(f"[DEBUG] {message}")
+        elif level == "WARNING":
+            logger.warning(f"[DEBUG-WARN] {message}")
+        elif level == "ERROR":
+            logger.error(f"[DEBUG-ERROR] {message}")
+        else:
+            logger.info(f"[DEBUG] {message}")
+    except Exception:
+        pass  # Silently fail if logging has issues
 
 if __name__ == "__main__":
     import argparse

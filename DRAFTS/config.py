@@ -28,9 +28,15 @@ DATA_NEEDS_REVERSAL: bool = False # Indica si los datos necesitan ser revertidos
 # Configuracion del pipeline  ------------------------------------------------------
 USE_MULTI_BAND: bool = False # Indica si se utiliza procesamiento de múltiples bandas.
 SLICE_LEN: int = 512  # Longitud de cada slice, en muestras.
-DET_PROB: float = 0.3 # Probabilidad de detección mínima para considerar un evento como válido.
+DET_PROB: float = 0.5 # Probabilidad de detección mínima para considerar un evento como válido.
 DM_min: int = 0 # DM mínimo, en pc cm⁻³. 
 DM_max: int = 129 # DM máximo, en pc cm⁻³.
+
+# Configuracion de debugging ---------------------------------------------------
+DEBUG: bool = False # Activar logging detallado para debugging (TEMPORAL: desactivado)
+DEBUG_DATA: bool = False # Activar logging de información científica de datos
+DEBUG_MEMORY: bool = False # Activar monitoring de memoria
+DEBUG_TIMING: bool = False # Activar medición de tiempos detallada
 
 # Rutas de archivos y modelos ---------------------------------------------------
 DATA_DIR = Path("./Data") # Directorio donde se almacenan los datos de entrada.
@@ -46,4 +52,4 @@ CLASS_PROB = 0.5
  
 # Default FRB targets --------------------------------------------------------
 #Objetivos de FRB predeterminados. Esta lista se utiliza para buscar archivos FITS
-FRB_TARGETS = ["11L"] # "B0355+54", "FRB20121102", "FRB20201124", "FRB20180301"
+FRB_TARGETS = ["3097_0001"] # "B0355+54", "FRB20121102", "FRB20201124", "FRB20180301", "2017-04-03"
